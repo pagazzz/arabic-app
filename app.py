@@ -73,15 +73,26 @@ if st.session_state.page == "home":
         
         c1, c2 = st.columns(2)
         if c1.button("✅ צדקתי"):
-            data.at[idx, 'level'] += 1
-            data.at[idx, 'next_review'] = str(datetime.date.today() + datetime.timedelta(days=data.at[idx, 'level'] * 2))
-            del st.session_state.current_idx
+            # וידוא שהרמה היא מספר לפני החישוב
+            current_lvl = pd.to_numeric(data.at[idx, 'level'], errors='coerce')
+            if pd.isna(current_lvl): current_lvl = 1
+            
+            new_lvl = int(current_lvl + 1)
+            data.at[idx, 'level'] = new_lvl
+            
+            # חישוב ימים לתצוגה הבאה (לפי הרמה)
+            delta_days = new_lvl * 2
+            data.at[idx, 'next_review'] = str(datetime.date.today() + datetime.timedelta(days=delta_days))
+            
+            if 'current_idx' in st.session_state:
+                del st.session_state.current_idx
             save_data()
             st.rerun()
             
         if c2.button("❌ טעיתי"):
             data.at[idx, 'next_review'] = str(datetime.date.today() + datetime.timedelta(days=1))
-            del st.session_state.current_idx
+            if 'current_idx' in st.session_state:
+                del st.session_state.current_idx
             save_data()
             st.rerun()
     else:
