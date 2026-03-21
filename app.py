@@ -1,31 +1,22 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import os
 import random
 import plotly.express as px
+from streamlit_gsheets import GSheetsConnection
 
-# --- הגדרות ---
-SHEET_ID = "1Nm1YozZqkQ7iy11ivmC-ukARGXJWy_bzpeXQIUMxMbg"
-CLOUD_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+# --- חיבור מאובטח לגוגל שיטס ---
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
-    # ניסיון טעינה ראשוני מהענן
     try:
-        df = pd.read_csv(CLOUD_URL)
-        st.toast("סונכרן מהענן! ☁️")
-    except:
-        # אם הענן נכשל, ניצור דאטה-פריים ריק עם עמודות
-        df = pd.DataFrame(columns=["word", "translation", "level", "next_review", "last_seen", "punished", "example"])
-    
-    # ניקוי נתונים ו-וידוא עמודות
-    for col in ["level", "next_review", "last_seen", "punished", "example"]:
-        if col not in df.columns: df[col] = ""
-    
-    # המרת תאריכים לפורמט טקסט אחיד
-    df['next_review'] = df['next_review'].fillna(str(datetime.date.today()))
-    df['level'] = pd.to_numeric(df['level'], errors='coerce').fillna(1).astype(int)
-    return df
+        # טעינת הנתונים ישירות מהחיבור שהגדרת ב-Secrets
+        df = conn.read(ttl=0) # ttl=0 מבטיח שהנתונים תמיד יהיו טריים
+        st.toast("הנתונים נטענו מהענן! ☁️")
+        return df
+    except Exception as e:
+        st.error(f"שגיאה בחיבור: {e}")
+        return pd.DataFrame(columns=["word", "translation", "level", "next_review", "example"])
 
 # --- ניהול מצב (Session State) ---
 if 'data' not in st.session_state:
@@ -33,31 +24,36 @@ if 'data' not in st.session_state:
 if 'page' not in st.session_state:
     st.session_state.page = "home"
 
-# פונקציית שמירה שמעדכנת את הזיכרון של האפליקציה
-def save_data():
-    st.session_state.data = st.session_state.data # מעדכן את ה-state
+# פונקציית שמירה שכותבת פיזית לגיליון גוגל
+def save_to_cloud(updated_df):
+    try:
+        conn.update(data=updated_df)
+        st.session_state.data = updated_df
+        st.success("נשמר בגיליון גוגל! ✅")
+    except Exception as e:
+        st.error(f"שגיאה בשמירה: {e}")
 
-# --- עיצוב מותאם לנייד ---
+# --- עיצוב ---
 st.markdown("""
     <style>
-    .main-card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; }
-    .arabic-font { font-size: 45px !important; color: #2c3e50; direction: rtl; }
-    .stButton>button { width: 100%; border-radius: 10px; height: 50px; font-weight: bold; }
+    .main-card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; border: 1px solid #eee; }
+    .arabic-font { font-size: 48px !important; color: #2c3e50; font-family: 'Arial'; }
+    .stButton>button { width: 100%; border-radius: 10px; height: 55px; font-weight: bold; font-size: 18px; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- דף בית (תרגול) ---
 if st.session_state.page == "home":
-    st.title("🛡️ My Arabic Mentor")
+    st.title("🛡️ המנטור לערבית")
     
     data = st.session_state.data
     today = str(datetime.date.today())
     
-    # סינון מילים לתרגול
+    # סינון מילים לתרגול (כולל המרה בטוחה של תאריכים)
+    data['next_review'] = data['next_review'].astype(str)
     due_words = data[data['next_review'] <= today].copy()
     
     if not due_words.empty:
-        # בוחרים מילה אחת אקראית מתוך התור
         if 'current_idx' not in st.session_state:
             st.session_state.current_idx = due_words.index[0]
         
@@ -67,68 +63,61 @@ if st.session_state.page == "home":
         st.markdown(f'<div class="main-card"><p class="arabic-font">{curr["word"]}</p></div>', unsafe_allow_html=True)
         
         with st.expander("👁️ חשוף תשובה"):
-            st.write(f"**תרגום:** {curr['translation']}")
-            if str(curr['example']) != 'nan':
+            st.subheader(curr['translation'])
+            if str(curr['example']) != 'nan' and curr['example'] != "":
                 st.info(f"💡 {curr['example']}")
         
+        st.write("---")
         c1, c2 = st.columns(2)
         if c1.button("✅ צדקתי"):
-            # וידוא שהרמה היא מספר לפני החישוב
-            current_lvl = pd.to_numeric(data.at[idx, 'level'], errors='coerce')
-            if pd.isna(current_lvl): current_lvl = 1
+            # עדכון רמה ותאריך
+            lvl = pd.to_numeric(data.at[idx, 'level'], errors='coerce')
+            if pd.isna(lvl): lvl = 1
+            new_lvl = int(lvl + 1)
             
-            new_lvl = int(current_lvl + 1)
             data.at[idx, 'level'] = new_lvl
+            data.at[idx, 'next_review'] = str(datetime.date.today() + datetime.timedelta(days=new_lvl * 2))
             
-            # חישוב ימים לתצוגה הבאה (לפי הרמה)
-            delta_days = new_lvl * 2
-            data.at[idx, 'next_review'] = str(datetime.date.today() + datetime.timedelta(days=delta_days))
-            
-            if 'current_idx' in st.session_state:
-                del st.session_state.current_idx
-            save_data()
+            del st.session_state.current_idx
+            save_to_cloud(data)
             st.rerun()
             
         if c2.button("❌ טעיתי"):
             data.at[idx, 'next_review'] = str(datetime.date.today() + datetime.timedelta(days=1))
-            if 'current_idx' in st.session_state:
-                del st.session_state.current_idx
-            save_data()
+            del st.session_state.current_idx
+            save_to_cloud(data)
             st.rerun()
     else:
         st.success("סיימת הכל להיום! 🏆")
-
-    st.write("---")
-    # הוספת מילה (עובד לתוך ה-Session)
-    with st.expander("➕ הוספת מילה חדשה"):
-        w = st.text_input("מילה בערבית")
-        t = st.text_input("תרגום לעברית")
-        ex = st.text_input("משפט לדוגמה")
-        if st.button("שמור אצלי"):
-            new_row = pd.DataFrame([{"word": w, "translation": t, "level": 1, "next_review": today, "example": ex}])
-            st.session_state.data = pd.concat([st.session_state.data, new_row], ignore_index=True)
-            st.success("המילה נוספה בהצלחה!")
+        if st.button("🔄 רענן נתונים"): 
+            st.session_state.data = load_data()
             st.rerun()
 
-    # ניווט
+    st.write("---")
+    with st.expander("➕ הוספת מילה חדשה"):
+        w = st.text_input("ערבית")
+        t = st.text_input("עברית")
+        ex = st.text_input("משפט לדוגמה")
+        if st.button("שמור לגיליון"):
+            new_row = pd.DataFrame([{"word": w, "translation": t, "level": 1, "next_review": today, "example": ex}])
+            updated_df = pd.concat([st.session_state.data, new_row], ignore_index=True)
+            save_to_cloud(updated_df)
+            st.rerun()
+
     col1, col2 = st.columns(2)
-    if col1.button("📂 כל המילים"): st.session_state.page = "manager"; st.rerun()
-    if col2.button("📊 ביצועים"): st.session_state.page = "stats"; st.rerun()
+    if col1.button("📂 ניהול"): st.session_state.page = "manager"; st.rerun()
+    if col2.button("📊 סטטיסטיקה"): st.session_state.page = "stats"; st.rerun()
 
-# --- דף ניהול מילים (מתוקן לנייד) ---
+# --- דף ניהול ---
 elif st.session_state.page == "manager":
-    st.header("📂 רשימת המילים שלי")
+    st.header("📂 מאגר המילים")
     if st.button("⬅️ חזרה"): st.session_state.page = "home"; st.rerun()
-    
-    for i, row in st.session_state.data.iterrows():
-        with st.container():
-            st.markdown(f"**{row['word']}** - {row['translation']} (Lvl {row['level']})")
-            st.write(f"---")
+    st.write(f"סה\"כ מילים: {len(st.session_state.data)}")
+    st.dataframe(st.session_state.data[['word', 'translation', 'level']], use_container_width=True)
 
-# --- דף סטטיסטיקות ---
+# --- דף סטטיסטיקה ---
 elif st.session_state.page == "stats":
-    st.header("📊 מצב הלימוד")
+    st.header("📊 התקדמות")
     if st.button("⬅️ חזרה"): st.session_state.page = "home"; st.rerun()
-    levels = st.session_state.data['level'].value_counts()
-    fig = px.bar(levels, title="מילים לפי רמה")
+    fig = px.pie(st.session_state.data, names='level', title="חלוקה לפי רמות")
     st.plotly_chart(fig, use_container_width=True)
