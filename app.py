@@ -5,122 +5,119 @@ import os
 import random
 import plotly.express as px
 
-# --- הגדרות סנכרון ענן ---
-# הקישור הישיר לייצוא CSV מהגיליון שלך
+# --- הגדרות ---
 SHEET_ID = "1Nm1YozZqkQ7iy11ivmC-ukARGXJWy_bzpeXQIUMxMbg"
 CLOUD_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
-LOCAL_FILE = "vocabulary.csv"
 
 def load_data():
-    # ניסיון טעינה מהענן
+    # ניסיון טעינה ראשוני מהענן
     try:
         df = pd.read_csv(CLOUD_URL)
-        df.to_csv(LOCAL_FILE, index=False) # גיבוי מקומי
-        st.toast("סונכרן בהצלחה מהענן! ☁️")
+        st.toast("סונכרן מהענן! ☁️")
     except:
-        # אם אין אינטרנט, טען מהמחשב
-        if os.path.exists(LOCAL_FILE):
-            df = pd.read_csv(LOCAL_FILE)
-            st.warning("עובד במצב אופליין (גיבוי מקומי)")
-        else:
-            return pd.DataFrame(columns=["word", "translation", "level", "next_review", "last_seen", "punished", "example"])
+        # אם הענן נכשל, ניצור דאטה-פריים ריק עם עמודות
+        df = pd.DataFrame(columns=["word", "translation", "level", "next_review", "last_seen", "punished", "example"])
     
-    # וידוא עמודות ותקינות נתונים
+    # ניקוי נתונים ו-וידוא עמודות
     for col in ["level", "next_review", "last_seen", "punished", "example"]:
         if col not in df.columns: df[col] = ""
-    df['level'] = df['level'].apply(lambda x: int(x) if str(x).isdigit() else x)
-    df['punished'] = df['punished'].fillna(False)
+    
+    # המרת תאריכים לפורמט טקסט אחיד
+    df['next_review'] = df['next_review'].fillna(str(datetime.date.today()))
+    df['level'] = pd.to_numeric(df['level'], errors='coerce').fillna(1).astype(int)
     return df
 
-def save_data(df):
-    # שומר מקומית (בשביל עדכון גוגל שיטס אוטומטי מלא נדרשת הגדרה מורכבת יותר, 
-    # כרגע זה מגבה הכל ב-CSV המקומי שלך)
-    df.to_csv(LOCAL_FILE, index=False)
-
+# --- ניהול מצב (Session State) ---
 if 'data' not in st.session_state:
     st.session_state.data = load_data()
 if 'page' not in st.session_state:
     st.session_state.page = "home"
 
-data = st.session_state.data
+# פונקציית שמירה שמעדכנת את הזיכרון של האפליקציה
+def save_data():
+    st.session_state.data = st.session_state.data # מעדכן את ה-state
 
-# --- CSS מעוצב ---
+# --- עיצוב מותאם לנייד ---
 st.markdown("""
     <style>
-    .main-card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; }
-    .arabic-font { font-size: 52px !important; color: #2c3e50; font-family: 'Arial'; }
-    .example-text { color: #666; font-style: italic; background: #f9f9f9; padding: 10px; border-radius: 8px; margin-top: 10px; }
-    .stButton>button:active { transform: scale(0.92); box-shadow: 0 0 15px #4CAF50; }
+    .main-card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; }
+    .arabic-font { font-size: 45px !important; color: #2c3e50; direction: rtl; }
+    .stButton>button { width: 100%; border-radius: 10px; height: 50px; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- לוגיקת דפים ---
-def move_page(p):
-    st.session_state.page = p
-    st.rerun()
-
+# --- דף בית (תרגול) ---
 if st.session_state.page == "home":
-    st.title("🛡️ המנטור האישי שלך")
+    st.title("🛡️ My Arabic Mentor")
     
-    # חישוב מילים להיום
+    data = st.session_state.data
     today = str(datetime.date.today())
-    due_words = data[(data['next_review'] <= today) & (data['level'] != "FINAL")].copy()
     
-    if 'current_queue' not in st.session_state or st.session_state.get('reset_queue'):
-        st.session_state.current_queue = due_words.sample(frac=1).reset_index()
-        st.session_state.reset_queue = False
-
-    queue = st.session_state.current_queue
-
-    if not queue.empty:
-        curr = queue.iloc[0]
-        idx = curr['index']
+    # סינון מילים לתרגול
+    due_words = data[data['next_review'] <= today].copy()
+    
+    if not due_words.empty:
+        # בוחרים מילה אחת אקראית מתוך התור
+        if 'current_idx' not in st.session_state:
+            st.session_state.current_idx = due_words.index[0]
         
-        # כיוון תרגום
-        if f"f_{idx}" not in st.session_state: st.session_state[f"f_{idx}"] = random.choice([True, False])
-        flipped = st.session_state[f"f_{idx}"]
+        idx = st.session_state.current_idx
+        curr = data.loc[idx]
         
-        # תצוגת כרטיס
-        st.markdown(f'<div class="main-card"><p class="{"arabic-font" if flipped else ""}" style="font-size: 30px;">{curr["word"] if flipped else curr["translation"]}</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="main-card"><p class="arabic-font">{curr["word"]}</p></div>', unsafe_allow_html=True)
         
-        if st.button("👁️ חשוף תשובה"):
-            st.success(curr['translation'] if flipped else curr['word'])
-            if str(curr['example']) != 'nan' and curr['example'] != "":
-                st.markdown(f'<div class="example-text">💡 {curr["example"]}</div>', unsafe_allow_html=True)
+        with st.expander("👁️ חשוף תשובה"):
+            st.write(f"**תרגום:** {curr['translation']}")
+            if str(curr['example']) != 'nan':
+                st.info(f"💡 {curr['example']}")
         
         c1, c2 = st.columns(2)
         if c1.button("✅ צדקתי"):
-            lvl = data.at[idx, 'level']
-            data.at[idx, 'level'] = (lvl + 1) if isinstance(lvl, int) and lvl < 6 else "FINAL"
-            data.at[idx, 'next_review'] = str(datetime.date.today() + datetime.timedelta(days=2))
-            save_data(data); st.session_state.current_queue = queue.iloc[1:]; st.rerun()
+            data.at[idx, 'level'] += 1
+            data.at[idx, 'next_review'] = str(datetime.date.today() + datetime.timedelta(days=data.at[idx, 'level'] * 2))
+            del st.session_state.current_idx
+            save_data()
+            st.rerun()
+            
         if c2.button("❌ טעיתי"):
             data.at[idx, 'next_review'] = str(datetime.date.today() + datetime.timedelta(days=1))
-            save_data(data); st.session_state.current_queue = queue.iloc[1:]; st.rerun()
+            del st.session_state.current_idx
+            save_data()
+            st.rerun()
     else:
-        st.info("אין מילים לתרגול כרגע. זמן מצוין להוסיף חדשות!")
+        st.success("סיימת הכל להיום! 🏆")
 
     st.write("---")
-    with st.expander("➕ הוספת מילה ומשפט"):
-        w = st.text_input("ערבית")
-        t = st.text_input("עברית")
+    # הוספת מילה (עובד לתוך ה-Session)
+    with st.expander("➕ הוספת מילה חדשה"):
+        w = st.text_input("מילה בערבית")
+        t = st.text_input("תרגום לעברית")
         ex = st.text_input("משפט לדוגמה")
-        if st.button("שמור לגיבוי"):
-            new = {"word": w, "translation": t, "level": 1, "next_review": str(datetime.date.today()), "example": ex, "punished": False, "last_seen": str(datetime.date.today())}
-            data = pd.concat([data, pd.DataFrame([new])], ignore_index=True)
-            save_data(data); st.rerun()
+        if st.button("שמור אצלי"):
+            new_row = pd.DataFrame([{"word": w, "translation": t, "level": 1, "next_review": today, "example": ex}])
+            st.session_state.data = pd.concat([st.session_state.data, new_row], ignore_index=True)
+            st.success("המילה נוספה בהצלחה!")
+            st.rerun()
 
-    c_nav1, c_nav2 = st.columns(2)
-    if c_nav1.button("📂 ניהול"): move_page("manager")
-    if c_nav2.button("📊 ביצועים"): move_page("stats")
+    # ניווט
+    col1, col2 = st.columns(2)
+    if col1.button("📂 כל המילים"): st.session_state.page = "manager"; st.rerun()
+    if col2.button("📊 ביצועים"): st.session_state.page = "stats"; st.rerun()
 
-elif st.session_state.page == "stats":
-    st.title("📊 סטטיסטיקות")
-    if st.button("⬅️"): move_page("home")
-    fig = px.pie(data['level'].value_counts().reset_index(), values='count', names='level', hole=.4)
-    st.plotly_chart(fig)
-
+# --- דף ניהול מילים (מתוקן לנייד) ---
 elif st.session_state.page == "manager":
-    st.title("📂 ניהול מילים")
-    if st.button("⬅️"): move_page("home")
-    st.dataframe(data[['word', 'translation', 'level', 'example']])
+    st.header("📂 רשימת המילים שלי")
+    if st.button("⬅️ חזרה"): st.session_state.page = "home"; st.rerun()
+    
+    for i, row in st.session_state.data.iterrows():
+        with st.container():
+            st.markdown(f"**{row['word']}** - {row['translation']} (Lvl {row['level']})")
+            st.write(f"---")
+
+# --- דף סטטיסטיקות ---
+elif st.session_state.page == "stats":
+    st.header("📊 מצב הלימוד")
+    if st.button("⬅️ חזרה"): st.session_state.page = "home"; st.rerun()
+    levels = st.session_state.data['level'].value_counts()
+    fig = px.bar(levels, title="מילים לפי רמה")
+    st.plotly_chart(fig, use_container_width=True)
