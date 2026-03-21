@@ -10,13 +10,12 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
     try:
-        # טעינת הנתונים ישירות מהחיבור שהגדרת ב-Secrets
-        df = conn.read(ttl=0) # ttl=0 מבטיח שהנתונים תמיד יהיו טריים
-        st.toast("הנתונים נטענו מהענן! ☁️")
+        # קריאת הנתונים מהענן (ttl=0 מבטיח רענון בכל טעינה)
+        df = conn.read(ttl=0)
         return df
     except Exception as e:
-        st.error(f"שגיאה בחיבור: {e}")
-        return pd.DataFrame(columns=["word", "translation", "level", "next_review", "example"])
+        st.error(f"שגיאה בטעינת הנתונים: {e}")
+        return pd.DataFrame(columns=["word", "translation", "level", "next_review", "last_seen", "punished", "example"])
 
 # --- ניהול מצב (Session State) ---
 if 'data' not in st.session_state:
@@ -27,17 +26,23 @@ if 'page' not in st.session_state:
 # פונקציית שמירה שכותבת פיזית לגיליון גוגל
 def save_to_cloud(updated_df):
     try:
-        conn.update(data=updated_df)
-        st.session_state.data = updated_df
-        st.success("נשמר בגיליון גוגל! ✅")
+        # וידוא שמות העמודות לפני השמירה למניעת שגיאות מבנה
+        cols = ["word", "translation", "level", "next_review", "last_seen", "punished", "example"]
+        final_df = updated_df[cols]
+        
+        # פקודת העדכון לענן
+        conn.update(data=final_df)
+        st.session_state.data = final_df
+        st.success("הנתונים נשמרו בגיליון גוגל! ✅")
+        st.balloons()
     except Exception as e:
-        st.error(f"שגיאה בשמירה: {e}")
+        st.error(f"שגיאה בשמירה לענן: {e}")
 
-# --- עיצוב ---
+# --- עיצוב מותאם לאייפון ---
 st.markdown("""
     <style>
     .main-card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; border: 1px solid #eee; }
-    .arabic-font { font-size: 48px !important; color: #2c3e50; font-family: 'Arial'; }
+    .arabic-font { font-size: 45px !important; color: #2c3e50; font-family: 'Arial'; direction: rtl; }
     .stButton>button { width: 100%; border-radius: 10px; height: 55px; font-weight: bold; font-size: 18px; }
     </style>
     """, unsafe_allow_html=True)
@@ -49,7 +54,7 @@ if st.session_state.page == "home":
     data = st.session_state.data
     today = str(datetime.date.today())
     
-    # סינון מילים לתרגול (כולל המרה בטוחה של תאריכים)
+    # סינון מילים לתרגול
     data['next_review'] = data['next_review'].astype(str)
     due_words = data[data['next_review'] <= today].copy()
     
@@ -70,13 +75,13 @@ if st.session_state.page == "home":
         st.write("---")
         c1, c2 = st.columns(2)
         if c1.button("✅ צדקתי"):
-            # עדכון רמה ותאריך
             lvl = pd.to_numeric(data.at[idx, 'level'], errors='coerce')
             if pd.isna(lvl): lvl = 1
             new_lvl = int(lvl + 1)
             
             data.at[idx, 'level'] = new_lvl
             data.at[idx, 'next_review'] = str(datetime.date.today() + datetime.timedelta(days=new_lvl * 2))
+            data.at[idx, 'last_seen'] = today
             
             del st.session_state.current_idx
             save_to_cloud(data)
@@ -84,25 +89,37 @@ if st.session_state.page == "home":
             
         if c2.button("❌ טעיתי"):
             data.at[idx, 'next_review'] = str(datetime.date.today() + datetime.timedelta(days=1))
+            data.at[idx, 'last_seen'] = today
             del st.session_state.current_idx
             save_to_cloud(data)
             st.rerun()
     else:
         st.success("סיימת הכל להיום! 🏆")
-        if st.button("🔄 רענן נתונים"): 
+        if st.button("🔄 רענן נתונים מהענן"): 
             st.session_state.data = load_data()
             st.rerun()
 
     st.write("---")
     with st.expander("➕ הוספת מילה חדשה"):
-        w = st.text_input("ערבית")
-        t = st.text_input("עברית")
+        w = st.text_input("מילה בערבית")
+        t = st.text_input("תרגום לעברית")
         ex = st.text_input("משפט לדוגמה")
         if st.button("שמור לגיליון"):
-            new_row = pd.DataFrame([{"word": w, "translation": t, "level": 1, "next_review": today, "example": ex}])
-            updated_df = pd.concat([st.session_state.data, new_row], ignore_index=True)
-            save_to_cloud(updated_df)
-            st.rerun()
+            if w and t:
+                new_row = pd.DataFrame([{
+                    "word": w, 
+                    "translation": t, 
+                    "level": 1, 
+                    "next_review": today, 
+                    "last_seen": today,
+                    "punished": False,
+                    "example": ex
+                }])
+                updated_df = pd.concat([st.session_state.data, new_row], ignore_index=True)
+                save_to_cloud(updated_df)
+                st.rerun()
+            else:
+                st.warning("חובה למלא מילה ותרגום")
 
     col1, col2 = st.columns(2)
     if col1.button("📂 ניהול"): st.session_state.page = "manager"; st.rerun()
@@ -119,5 +136,8 @@ elif st.session_state.page == "manager":
 elif st.session_state.page == "stats":
     st.header("📊 התקדמות")
     if st.button("⬅️ חזרה"): st.session_state.page = "home"; st.rerun()
-    fig = px.pie(st.session_state.data, names='level', title="חלוקה לפי רמות")
-    st.plotly_chart(fig, use_container_width=True)
+    if not st.session_state.data.empty:
+        fig = px.pie(st.session_state.data, names='level', title="חלוקה לפי רמות")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.write("אין עדיין נתונים להצגה")
