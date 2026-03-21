@@ -26,28 +26,18 @@ if 'page' not in st.session_state:
 # פונקציית שמירה שכותבת פיזית לגיליון גוגל
 def save_to_cloud(updated_df):
     try:
-        # וידוא שמות העמודות לפני השמירה למניעת שגיאות מבנה
         cols = ["word", "translation", "level", "next_review", "last_seen", "punished", "example"]
         final_df = updated_df[cols]
         
-        # פקודת העדכון לענן
+        # תצוגה זמנית כדי לוודא שהמילה החדשה אכן בתוך הטבלה
+        st.write("מנסה לשמור את השורה האחרונה:", final_df.tail(1))
+        
         conn.update(data=final_df)
         st.session_state.data = final_df
-        st.success("הנתונים נשמרו בגיליון גוגל! ✅")
+        st.success("הנתונים נשלחו! בדוק את הגיליון.")
         st.balloons()
     except Exception as e:
-        st.error(f"שגיאה בשמירה לענן: {e}")
-
-# --- עיצוב מותאם לאייפון ---
-st.markdown("""
-    <style>
-    .main-card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; border: 1px solid #eee; }
-    .arabic-font { font-size: 45px !important; color: #2c3e50; font-family: 'Arial'; direction: rtl; }
-    .stButton>button { width: 100%; border-radius: 10px; height: 55px; font-weight: bold; font-size: 18px; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- דף בית (תרגול) ---
+        st.error(f"שגיאה: {e}")
 if st.session_state.page == "home":
     st.title("🛡️ המנטור לערבית")
     
