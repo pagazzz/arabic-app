@@ -47,13 +47,13 @@ if st.sidebar.button("💾 שמירה סופית לענן"): sync()
 # --- דף תרגול ---
 if page == "🎯 תרגול":
     st.title("🎯 תרגול יומי")
+# תצוגת בדיקה זמנית - תראה לנו מה האפליקציה "רואה" בגיליון
+    st.write(f"סה\"כ מילים בגיליון: {len(df)}")
+    if not df.empty:
+        st.write("דוגמה למילה ראשונה ורמתה:", df.iloc[0][['word', 'level', 'next_review']])
     
-    df = st.session_state.df
-    today = pd.Timestamp.now().normalize()
-    
-    # סינון: מילים שזמנן הגיע (או שאין להן תאריך) ורמתן נמוכה מ-8
-    due = df[(df['level'] < 8) & ((df['next_review'] <= today) | (df['next_review'].isna()))]
-    
+    # סינון אגרסיבי - מציג הכל חוץ מרמה 8
+    due = df[df['level'] < 8]
     if due.empty:
         st.success("כל המילים מעודכנות! אין מה לתרגל כרגע.")
         if st.button("תרגל מילים מרמה 1 בכל זאת"):
