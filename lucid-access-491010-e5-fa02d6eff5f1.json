@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "lucid-access-491010-e5",
+  "private_key_id": "fa02d6eff5f138c45ab8e11ed512b9b6ca3c1914",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQC1dAQN4vFI761S\nVfyAduSNb10jiY0pju2u3UGM32KzER6oJRT97cYINg4lpzzKc5NIThLyt68oMdnw\nkrb2k6ZkdM4bMBPfocrqDI4jTooDKig3yxqNPlkfO9K5YsvzH3hXwzCbApqn/XY0\nAi+ptuXDhD+8IN3pseBXm3o4V4AFVWuRb2gF+1AuFyeWMfxfEzq+rJcMWx4pgERM\nxh1jz+3vzSmmcDmuPrz4Lzp3rSKNRIOtmP4WvPqawGmqNwSEnzqmprGd/95H66c7\n69en8GOJqwNNX1uxgsJQGJkkpJD6treF8a/TeyzwGTfw0tFvH+wUJE61rE3Mf3eW\nKLiKnVt9AgMBAAECggEALuuFgtu8naoQTNqcNNHJjsMNt/tBC86AKnffE+DNolUa\ncstH7tN1ojjsFpN0ljsligxaPPX/bmrZmqotcnxCifZkN0aK1Qh+sl+1v253JJNZ\nm/fCcWR+YiOzfSmNaFwqX7NC1cpqGGdjkdZA4ec/6XtAidKL33qV8sFq7Le/jGEX\nJeZobVLSrWqdBzhA2jN/tvSkXOzFVw8Ht0EQylZQ5I2Zs4aAPhc/ReCqJMqPtEAY\nacrngzFTF1HlBlBcSPdBZ7Kr4cG44awnkCAmQAafZ9rfxu8WNjgeqEHnPIvKpZk/\nLfV3k6mv5OszI4Bw/XqX0pdeLZrdQlFkCTeVJSA+NwKBgQDgeIpxOl3/TBvrB03A\neow/ifGrEP32/iCMGn04rvY0AsEaAlLIwr2SFtQB1GKQ8aWgKgW54CYHHKgFooDg\nTFHAOzduf26jSWleAIQatSj0Fj3dtyx2pms/Zsd0HTbx4IjdqArmFIzilENiH1x3\nUFpls8mQ/BYAf0iqp2EKREC8PwKBgQDO8Khh8Pnwy4tGzYStdJlSWQSPff6ABSRD\np3II7tebn+Q21xafw21yvUiE7PgvsPgPIqIHQALMemrGkNdb39jCxbWHOj+GjNz7\nKmo3p5qpP4gh4YlLGOi+corSIjQtN5AF6fJWGsnkDJ24xe9YuVx+TJuJKasLiIbl\njANHBvopQwKBgAT8qJa7ZTs2xagDEYclMdh3iBb02a+TFcYHEKEhwfaF2SRqyMwN\nB4knWK5xuX7e338fb+EhSbb+u/zkD1jsWSScLC8YRaz7BIxCFq1BORezJsy2NRat\nu9Q8xFGgFIhrJJ9IDHXwHvEpuhWD/NnpvxhjVicScqqwKT0hWtaPjaChAoGAMlkZ\nDqM7nFtZaoOMOUt6Fi/0TRkhd3JIzXEK7KN3r7RqKPGR3pMEqPrmjvi8tZW/9Ka/\ndzYauDc8jU0mKINA0LqbnOgOFqVlCnLaXuoXVgBQFbYy2iOYVOW3YsLRoQK4tseh\nn1NrNWHgadk2j4ahu1TWLrwFkovIDkdPcNOAv9MCgYBKoVsvz/k+smzS3/ln+oNI\n14niU2SclRzoe0yTpSyyaI4MF7BVhOFJpF2bhtTEfu/IujipkCtDsURhi4ZpDE5V\nGLCWc77yr9gaDv5Gxda1JqrNt9ywBxXR1zZlop5xPSqfLJNIT+RMxicQpxUda+ht\nQoZehkdn9+rh7Gm1WEbEDw==\n-----END PRIVATE KEY-----\n",
+  "client_email": "my-bot@lucid-access-491010-e5.iam.gserviceaccount.com",
+  "client_id": "100694555940367105665",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/my-bot%40lucid-access-491010-e5.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
