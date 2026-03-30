@@ -7,14 +7,14 @@ import random
 st.set_page_config(page_title="Arabic Learning App", layout="centered")
 
 # חיבור לגוגל שיטס באמצעות Secrets
+# חיבור לגוגל שיטס באמצעות Secrets
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    # קריאת הנתונים
     df = conn.read()
-    # ניקוי שורות ריקות לפי שמות העמודות בגיליון שלך
+    # ניקוי שורות ריקות לפי שמות העמודות בגיליון
     df = df.dropna(subset=['word', 'translation'])
 except Exception as e:
-    st.error(f"שגיאת תקשורת עם הגיליון: {e}")
+    st.error(f"פרטי השגיאה: {e}") # זה יגיד לנו מה הבעיה המדויקת
     st.stop()
 
 # אתחול מצב האפליקציה (Session State)
