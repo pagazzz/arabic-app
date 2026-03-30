@@ -1,7 +1,3 @@
 streamlit
-pandas
 st-gsheets-connection
-<<<<<<< HEAD
-=======
-plotly
->>>>>>> e106a38 (first sync)
+pandas

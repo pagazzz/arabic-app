@@ -4,7 +4,7 @@ import pandas as pd
 import random
 
 # הגדרות דף
-st.set_page_config(page_title="Arabic Learning App", dir="rtl")
+st.set_page_config(page_title="Arabic Learning App", layout="centered")
 
 # חיבור לגוגל שיטס באמצעות Secrets
 try:
