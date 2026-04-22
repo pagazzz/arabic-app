@@ -2,209 +2,299 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import random
-from datetime import datetime, timedelta
+from datetime import datetime
 
-# --- 1. הגדרות דף ועיצוב ---
-st.set_page_config(page_title="Arabic Mentor Ultra v3", layout="wide")
+# --- 1. הגדרות דף ועיצוב CSS ---
+st.set_page_config(page_title="Arabic Mentor Ultra v5", layout="wide")
+
 st.markdown("""
     <style>
-    .stButton>button { border-radius: 8px; height: 3em; font-weight: bold; width: 100%; }
-    .hard-word { color: #ff4b4b; font-weight: bold; border: 1px solid #ff4b4b; padding: 2px 5px; border-radius: 4px; }
+    .main { background-color: #f8f9fa; }
+    .stButton>button { border-radius: 10px; height: 3.5em; font-weight: bold; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .category-tag { background-color: #e3f2fd; color: #0d47a1; padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 1em; border: 1px solid #bbdefb; }
+    .hard-word-tag { color: #d32f2f; font-weight: bold; border: 2px solid #d32f2f; padding: 3px 10px; border-radius: 5px; background-color: #ffebee; }
+    .stats-card { background-color: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    h1 { color: #1e1e1e; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. חיבור לנתונים ---
+# --- 2. חיבור לנתונים ופונקציות טעינה ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 @st.cache_data(ttl=5)
-def fetch_data():
+def load_and_initialize_data():
     try:
         df = conn.read(ttl=0)
-        if df is None or df.empty: return pd.DataFrame()
+        if df is None or df.empty:
+            return pd.DataFrame()
         
-        # עמודות נדרשות כולל החדשות
-        required_cols = {
-            'word': "", 'translation': "", 'level': 1, 
+        # וידוא קיום כל העמודות שדיברנו עליהן
+        columns_specs = {
+            'word': "", 
+            'translation': "", 
+            'level': 1, 
             'next_review': pd.Timestamp.now().strftime('%Y-%m-%d'),
-            'category': "כללי", 'history': "", 'date_added': pd.Timestamp.now().strftime('%Y-%m-%d'),
-            'last_seen': pd.Timestamp.now().strftime('%Y-%m-%d'), # חדש
-            'punished': 0 # חדש
+            'category': "כללי", 
+            'history': "", 
+            'date_added': pd.Timestamp.now().strftime('%Y-%m-%d'),
+            'last_seen': pd.Timestamp.now().strftime('%Y-%m-%d'),
+            'punished': 0
         }
-        for col, default in required_cols.items():
+        
+        for col, default in columns_specs.items():
             if col not in df.columns:
                 df[col] = default
         
-        # ניקוי פורמטים
+        # ניקוי וסידור סוגי נתונים
         df['history'] = df['history'].astype(str).replace(['nan', 'None', 'NaN'], '')
         df['next_review'] = pd.to_datetime(df['next_review'], errors='coerce').dt.normalize()
         df['last_seen'] = pd.to_datetime(df['last_seen'], errors='coerce').dt.normalize()
+        df['date_added'] = pd.to_datetime(df['date_added'], errors='coerce').dt.normalize()
         df['level'] = pd.to_numeric(df['level'], errors='coerce').fillna(1).astype(int)
         df['punished'] = pd.to_numeric(df['punished'], errors='coerce').fillna(0).astype(int)
+        
         return df
     except Exception as e:
-        st.error(f"שגיאה בטעינה: {e}")
+        st.error(f"Error loading data: {e}")
         return pd.DataFrame()
 
 # --- 3. לוגיקת עונשים (Punishment System) ---
-def apply_daily_punishment(df):
+def process_punishments(df):
     today = pd.Timestamp.now().normalize()
-    # מילה שהייתה צריכה להיענות לפני היום ולא נענתה
-    overdue_mask = (df['next_review'] < today) & (df['level'] < 8)
+    # מילה שמועד התרגול שלה עבר (לפני היום) והיא לא ברמה סופית
+    overdue_condition = (df['next_review'] < today) & (df['level'] < 8)
     
-    for idx in df[overdue_mask].index:
-        # עונש: תופיע למחרת (היום)
+    indices_to_punish = df[overdue_condition].index
+    
+    for idx in indices_to_punish:
+        # עונש 1: המילה מופיעה היום לתרגול
         df.at[idx, 'next_review'] = today
-        # 50% סיכוי לירידת רמה
+        # עונש 2: 50% סיכוי לירידת רמה
         if random.random() < 0.5:
-            df.at[idx, 'level'] = max(1, df.at[idx, 'level'] - 1)
-            df.at[idx, 'punished'] += 1
+            current_lvl = df.at[idx, 'level']
+            if current_lvl > 1:
+                df.at[idx, 'level'] = current_lvl - 1
+                df.at[idx, 'punished'] += 1
+                
     return df
 
-# --- 4. אתחול Session State ---
+# --- 4. ניהול Session State ---
 if "master_df" not in st.session_state:
-    raw_df = fetch_data()
-    st.session_state.master_df = apply_daily_punishment(raw_df)
+    raw_data = load_and_initialize_data()
+    st.session_state.master_df = process_punishments(raw_data)
 
-defaults = {
-    "page": "home", "daily_correct": 0, "daily_wrong": 0, 
-    "practice_direction": "ערבית ⬅️ עברית", "temp_hard_words": []
+if "today_mistakes" not in st.session_state:
+    st.session_state.today_mistakes = []
+
+# ערכי ברירת מחדל למשתני ניווט
+state_keys = {
+    "page": "home",
+    "daily_correct": 0,
+    "daily_wrong": 0,
+    "practice_direction": "ערבית ⬅️ עברית",
+    "list_view_filter": "all"
 }
-for key, val in defaults.items():
-    if key not in st.session_state: st.session_state[key] = val
+for key, val in state_keys.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
 
-# --- 5. פונקציות עזר ---
-def save_to_cloud():
-    df_save = st.session_state.master_df.copy()
-    df_save['next_review'] = df_save['next_review'].dt.strftime('%Y-%m-%d')
-    df_save['last_seen'] = df_save['last_seen'].dt.strftime('%Y-%m-%d')
-    conn.update(data=df_save)
-    st.toast("✅ הנתונים נשמרו בגיליון!")
+level_map = {1:"I", 2:"II", 3:"III", 4:"IV", 5:"V", 6:"VI", 7:"VII", 8:"FINAL"}
 
-def is_hard_word(history_str):
-    # בודק אם 3 התווים האחרונים בהיסטוריה הם "L-L-L-"
-    return history_str.endswith("L-L-L-")
+# --- 5. פונקציות עזר לשמירה וזיהוי ---
+def save_data_to_sheets():
+    df_to_save = st.session_state.master_df.copy()
+    # המרת תאריכים לטקסט לפני שמירה
+    date_cols = ['next_review', 'last_seen', 'date_added']
+    for col in date_cols:
+        df_to_save[col] = df_to_save[col].dt.strftime('%Y-%m-%d')
+    
+    conn.update(data=df_to_save)
+    st.cache_data.clear()
+    st.toast("✅ הנתונים נשמרו בגיליון בהצלחה!")
+
+def check_if_hard(history):
+    return history.endswith("L-L-L-")
 
 # --- 6. Sidebar ---
 with st.sidebar:
-    st.title("Arabic Mentor 🧠")
-    if st.button("🏠 דף הבית (תרגול)"): st.session_state.page = "home"
-    if st.button("🗂️ ניהול רשימות"): st.session_state.page = "groups"
-    if st.button("📊 סטטיסטיקה"): st.session_state.page = "stats"
-    st.divider()
+    st.title("Arabic Mentor Ultra 🧠")
+    st.markdown("---")
+    if st.button("🏠 דף הבית (תרגול)", use_container_width=True): st.session_state.page = "home"
+    if st.button("🗂️ ניהול רשימות", use_container_width=True): st.session_state.page = "groups"
+    if st.button("📊 סטטיסטיקה", use_container_width=True): st.session_state.page = "stats"
+    
+    st.markdown("---")
     st.session_state.practice_direction = st.radio("כיוון תרגול:", ["ערבית ⬅️ עברית", "עברית ⬅️ ערבית"])
-    st.divider()
-    if st.button("💾 שמירה סופית", type="primary"): save_to_cloud()
+    
+    st.markdown("---")
+    if st.button("💾 שמירה סופית לענן", type="primary", use_container_width=True):
+        save_data_to_sheets()
+    
+    # מונה הצלחות קטן בצד
+    st.write(f"הצלחות היום: {st.session_state.daily_correct}")
+    st.write(f"טעויות היום: {st.session_state.daily_wrong}")
 
-# --- 7. דף הבית ---
+# --- 7. דף הבית (תרגול והוספה) ---
 if st.session_state.page == "home":
     st.title("🏠 תרגול יומי")
     
-    # פיצ'ר הוספת מילה (בתוך דף הבית)
-    with st.expander("➕ הוסף מילה חדשה למערכת"):
-        with st.form("add_form", clear_on_submit=True):
+    # מנגנון הוספת מילה חדשה
+    with st.expander("➕ הוספת מילה חדשה למערכת"):
+        with st.form("new_word_form", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
-            w = c1.text_input("ערבית")
-            t = c2.text_input("עברית")
-            cat = c3.text_input("קבוצה", value="כללי")
-            if st.form_submit_button("שמור מילה"):
-                new_row = pd.DataFrame([{'word': w, 'translation': t, 'level': 1, 'category': cat, 
-                                         'next_review': pd.Timestamp.now().normalize(), 'history': '',
-                                         'date_added': pd.Timestamp.now().normalize(), 'punished': 0}])
-                st.session_state.master_df = pd.concat([st.session_state.master_df, new_row], ignore_index=True)
-                st.success("נוסף!")
+            w_arb = c1.text_input("מילה בערבית")
+            w_heb = c2.text_input("תרגום לעברית")
+            w_cat = c3.text_input("קבוצה", value="כללי")
+            if st.form_submit_button("הוסף לגיליון"):
+                new_entry = pd.DataFrame([{
+                    'word': w_arb, 'translation': w_heb, 'level': 1, 'category': w_cat,
+                    'next_review': pd.Timestamp.now().normalize(), 'history': '',
+                    'date_added': pd.Timestamp.now().normalize(), 'last_seen': pd.Timestamp.now().normalize(),
+                    'punished': 0
+                }])
+                st.session_state.master_df = pd.concat([st.session_state.master_df, new_entry], ignore_index=True)
+                st.success(f"המילה '{w_arb}' נוספה!")
 
-    df = st.session_state.master_df
+    # לוגיקת תרגול
     today = pd.Timestamp.now().normalize()
-    due_words = df[(df['next_review'] <= today) & (df['level'] < 8)]
+    df = st.session_state.master_df
+    # מילים לתרגול: רמה מתחת ל-8 ותאריך היום או לפני
+    due_today = df[(df['next_review'] <= today) & (df['level'] < 8)]
     
-    st.metric("מילים שנותרו להיום", len(due_words))
+    st.subheader(f"נשארו לך עוד **{len(due_today)}** מילים לתרגל היום")
 
-    if due_words.empty:
-        st.success("סיימת הכל! 🏆")
+    if due_today.empty:
+        st.balloons()
+        st.success("כל הכבוד! סיימת את כל המילים להיום. 🎉")
     else:
-        if "current_idx" not in st.session_state or st.session_state.current_idx not in due_words.index:
-            st.session_state.current_idx = random.choice(due_words.index.tolist())
+        if "current_idx" not in st.session_state or st.session_state.current_idx not in due_today.index:
+            st.session_state.current_idx = random.choice(due_today.index.tolist())
         
         row = df.loc[st.session_state.current_idx]
         
-        # עדכון last_seen (פנימי ל-Session)
+        # עדכון פעם אחרונה שנראה
         st.session_state.master_df.at[st.session_state.current_idx, 'last_seen'] = today
 
-        # תצוגה
-        q = row['word'] if "ערבית" in st.session_state.practice_direction else row['translation']
-        a = row['translation'] if "ערבית" in st.session_state.practice_direction else row['word']
+        # תצוגת קבוצה וסימון מילה קשה
+        st.markdown(f"<span class='category-tag'>📁 קבוצה: {row['category']}</span>", unsafe_allow_html=True)
+        if check_if_hard(row['history']):
+            st.markdown("<span class='hard-word-tag'>🔥 מילה קשה</span>", unsafe_allow_html=True)
+
+        # בחירת שאלה ותשובה לפי הכיוון
+        if st.session_state.practice_direction == "ערבית ⬅️ עברית":
+            question, answer = row['word'], row['translation']
+        else:
+            question, answer = row['translation'], row['word']
+
+        st.markdown(f"<h1 style='text-align: center; font-size: 90px; padding: 40px;'>{question}</h1>", unsafe_allow_html=True)
         
-        if is_hard_word(row['history']): st.markdown("<span class='hard-word'>מילה קשה 🔥</span>", unsafe_allow_html=True)
-        
-        st.markdown(f"<h1 style='text-align: center; font-size: 80px;'>{q}</h1>", unsafe_allow_html=True)
-        
-        if st.toggle("חשוף תשובה", key=f"ans_{st.session_state.current_idx}"):
-            st.markdown(f"<h2 style='text-align: center; color: #4CAF50;'>{a}</h2>", unsafe_allow_html=True)
-            c1, c2 = st.columns(2)
-            if c1.button("✅ ידעתי"):
+        if st.toggle("חשוף תשובה", key=f"toggle_{st.session_state.current_idx}"):
+            st.markdown(f"<h2 style='text-align: center; color: #2e7d32; font-size: 50px;'>{answer}</h2>", unsafe_allow_html=True)
+            
+            b1, b2 = st.columns(2)
+            if b1.button("✅ ידעתי"):
+                # הצלחה: רמה עולה, תאריך תרגול זז קדימה
                 st.session_state.master_df.at[st.session_state.current_idx, 'history'] += "W-"
                 new_lvl = min(8, row['level'] + 1)
                 st.session_state.master_df.at[st.session_state.current_idx, 'level'] = new_lvl
-                st.session_state.master_df.at[st.session_state.current_idx, 'next_review'] = today + pd.Timedelta(days=new_lvl*2)
+                # מרווח תרגול לפי הרמה (למשל: רמה 3 = עוד 6 ימים)
+                st.session_state.master_df.at[st.session_state.current_idx, 'next_review'] = today + pd.Timedelta(days=new_lvl * 2)
                 st.session_state.daily_correct += 1
                 del st.session_state.current_idx
                 st.rerun()
-            if c2.button("❌ טעיתי"):
+                
+            if b2.button("❌ טעיתי"):
+                # טעות: רמה יורדת ב-100%, תרגול חוזר מחר
                 st.session_state.master_df.at[st.session_state.current_idx, 'history'] += "L-"
-                # ירידה רמה ב-100% (סעיף 4)
                 st.session_state.master_df.at[st.session_state.current_idx, 'level'] = max(1, row['level'] - 1)
                 st.session_state.master_df.at[st.session_state.current_idx, 'next_review'] = today + pd.Timedelta(days=1)
                 st.session_state.daily_wrong += 1
+                # הוספה לרשימת הטעויות היומית לתרגול חוזר
+                if st.session_state.current_idx not in st.session_state.today_mistakes:
+                    st.session_state.today_mistakes.append(st.session_state.current_idx)
                 del st.session_state.current_idx
                 st.rerun()
 
-# --- 8. דף ניהול רשימות ---
+# --- 8. דף ניהול רשימות (הממשק המורחב עם הכפתורים) ---
 elif st.session_state.page == "groups":
-    st.title("🗂️ ניהול רשימות")
-    df = st.session_state.master_df
+    st.title("🗂️ ניהול רשימות וסינונים")
     
-    # זיהוי מילים קשות
-    hard_words_df = df[df['history'].str.endswith("L-L-L-")].copy()
-    
-    tab1, tab2 = st.tabs(["כל המילים", "🔥 מילים קשות"])
-    
-    with tab1:
-        st.dataframe(df)
-        
-    with tab2:
-        st.subheader(f"מצאנו {len(hard_words_df)} מילים שטעית בהן 3 פעמים ברציפות")
-        if not hard_words_df.empty:
-            if st.button("🚀 תרגול מילים קשות (ללא השפעה על הגיליון)"):
-                st.session_state.page = "hard_practice"
-                st.session_state.practice_list = hard_words_df.index.tolist()
-                st.rerun()
-            st.dataframe(hard_words_df[['word', 'translation', 'level', 'punished']])
+    # שורת כפתורי ניווט מהירים
+    st.subheader("סינונים מיוחדים:")
+    c1, c2, c3, c4 = st.columns(4)
+    if c1.button("🌐 כל המילים"): st.session_state.list_view_filter = "all"
+    if c2.button("🔥 מילים קשות (L-L-L)"): st.session_state.list_view_filter = "hard"
+    if c3.button("⚠️ טעויות מהיום"): st.session_state.list_view_filter = "mistakes"
+    if c4.button("🏆 רמה FINAL"): st.session_state.list_view_filter = 8
 
-# --- 9. דף תרגול מילים קשות (Sandbox) ---
-elif st.session_state.page == "hard_practice":
-    st.title("🔥 תרגול מילים קשות (מצב בטוח)")
-    if st.button("🔙 חזור לניהול"): st.session_state.page = "groups"; st.rerun()
+    st.subheader("סינון לפי רמה:")
+    lvl_cols = st.columns(7)
+    for i in range(1, 8):
+        if lvl_cols[i-1].button(f"רמה {level_map[i]}"):
+            st.session_state.list_view_filter = i
+
+    st.divider()
+
+    # לוגיקת הצגת הטבלה
+    view = st.session_state.list_view_filter
+    df_display = st.session_state.master_df
     
-    idx_list = st.session_state.get("practice_list", [])
-    if not idx_list:
-        st.success("אין מילים לתרגול!")
+    if view == "hard":
+        df_display = df_display[df_display['history'].str.endswith("L-L-L-")]
+    elif view == "mistakes":
+        df_display = df_display.loc[st.session_state.today_mistakes]
+    elif isinstance(view, int):
+        df_display = df_display[df_display['level'] == view]
+
+    # כפתור תרגול ממוקד (Sandbox)
+    if view in ["hard", "mistakes"] and not df_display.empty:
+        st.warning(f"מציג {len(df_display)} מילים. תרגול זה אינו משפיע על הרמות בגיליון.")
+        if st.button(f"🚀 התחל תרגול ממוקד: {view}", type="primary"):
+            st.session_state.page = "special_practice"
+            st.session_state.special_list_indices = df_display.index.tolist()
+            st.rerun()
+
+    st.dataframe(df_display[['word', 'translation', 'level', 'category', 'punished', 'last_seen']], use_container_width=True)
+
+# --- 9. דף תרגול מיוחד (Special Practice / Sandbox) ---
+elif st.session_state.page == "special_practice":
+    st.title("🎯 תרגול ממוקד (מצב Sandbox)")
+    if st.button("🔙 חזרה לניהול רשימות"): st.session_state.page = "groups"; st.rerun()
+    
+    indices = st.session_state.get("special_list_indices", [])
+    if not indices:
+        st.info("אין מילים לתרגול בסינון זה.")
     else:
-        if "hard_idx" not in st.session_state: st.session_state.hard_idx = random.choice(idx_list)
-        row = st.session_state.master_df.loc[st.session_state.hard_idx]
+        if "spec_idx" not in st.session_state or st.session_state.spec_idx not in indices:
+            st.session_state.spec_idx = random.choice(indices)
         
-        st.markdown(f"<h1 style='text-align: center;'>{row['word']}</h1>", unsafe_allow_html=True)
-        if st.toggle("תשובה"):
+        row = st.session_state.master_df.loc[st.session_state.spec_idx]
+        st.markdown(f"<h1 style='text-align: center; font-size: 70px;'>{row['word']}</h1>", unsafe_allow_html=True)
+        
+        if st.toggle("חשוף תשובה", key="spec_toggle"):
             st.write(f"### {row['translation']}")
-            if st.button("הבנתי, נקסט!"):
-                del st.session_state.hard_idx
+            if st.button("המילה הבאה ➡️"):
+                del st.session_state.spec_idx
                 st.rerun()
 
-# --- 10. סטטיסטיקה ---
+# --- 10. דף סטטיסטיקה ---
 elif st.session_state.page == "stats":
-    st.title("📊 סטטיסטיקה")
+    st.title("📊 סטטיסטיקה וביצועים")
     df = st.session_state.master_df
-    c1, c2 = st.columns(2)
-    c1.metric("סה\"כ עונשים שחולקו", df['punished'].sum())
-    c2.metric("מילים קשות", len(df[df['history'].str.endswith("L-L-L-")]))
-    st.write("פעם אחרונה שנראה (מדגם):")
-    st.table(df[['word', 'last_seen']].tail(5))
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("סה\"כ מילים במערכת", len(df))
+    with col2:
+        st.metric("מילים שסיימו (FINAL)", len(df[df['level'] == 8]))
+    with col3:
+        st.metric("סה\"כ עונשים שחולקו 🍎", df['punished'].sum())
+
+    st.divider()
+    st.subheader("התפלגות רמות הלמידה")
+    # יצירת גרף התפלגות רמות
+    lvl_counts = df['level'].value_counts().sort_index().reset_index()
+    lvl_counts.columns = ['Level', 'Count']
+    import plotly.express as px
+    fig = px.bar(lvl_counts, x='Level', y='Count', color='Count', color_continuous_scale='Blues')
+    st.plotly_chart(fig, use_container_width=True)
