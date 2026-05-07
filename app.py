@@ -60,21 +60,42 @@ def load_and_initialize_data():
 
 # --- 3. לוגיקת עונשים (Punishment System) ---
 def process_punishments(df):
+    if df.empty:
+        return df
+        
     today = pd.Timestamp.now().normalize()
-    # מילה שמועד התרגול שלה עבר (לפני היום) והיא לא ברמה סופית
-    overdue_condition = (df['next_review'] < today) & (df['level'] < 8)
     
-    indices_to_punish = df[overdue_condition].index
+    # מציאת כל המילים שהיו אמורות להיבדק לפני היום ואינן ברמת FINAL
+    overdue_mask = (df['next_review'] < today) & (df['level'] < 8)
+    indices_to_punish = df[overdue_mask].index
     
     for idx in indices_to_punish:
-        # עונש 1: המילה מופיעה היום לתרגול
-        df.at[idx, 'next_review'] = today
-        # עונש 2: 50% סיכוי לירידת רמה
-        if random.random() < 0.5:
+        next_review_date = df.at[idx, 'next_review']
+        # חישוב ההפרש בימים
+        days_diff = (today - next_review_date).days
+        
+        punished_happened = False
+        
+        # תרחיש 1: איחור של יום אחד בדיוק -> 50% סיכוי לירידה
+        if days_diff == 1:
+            if random.random() < 0.5:
+                punished_happened = True
+        
+        # תרחיש 2: איחור של יומיים ומעלה -> 100% סיכוי לירידה
+        elif days_diff >= 2:
+            punished_happened = True
+            
+        if punished_happened:
             current_lvl = df.at[idx, 'level']
             if current_lvl > 1:
                 df.at[idx, 'level'] = current_lvl - 1
-                df.at[idx, 'punished'] += 1
+                # וידוא שהערך הוא מספר לפני ההוספה
+                current_punished = pd.to_numeric(df.at[idx, 'punished'], errors='coerce')
+                if pd.isna(current_punished): current_punished = 0
+                df.at[idx, 'punished'] = current_punished + 1
+        
+        # בכל מקרה של איחור - המילה מוקפצת להיום כדי שתופיע בתרגול
+        df.at[idx, 'next_review'] = today
                 
     return df
 
